@@ -1,0 +1,15 @@
+@font-face {
+  font-family: 'BlackJack';
+  src: url('../../fonts/Blackjack.otf');
+}
+
+@font-face {
+  font-family: 'Welcome';
+  src: url('../../fonts/Welcome.otf');
+}
+
+.welcome-text {
+  font-family: 'Welcome';
+  font-size: 30px;
+  // color: white;
+}

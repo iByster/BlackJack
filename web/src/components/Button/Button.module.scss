@@ -1,0 +1,14 @@
+.button {
+  padding: 10px 90px;
+  font-size: 40px;
+  border-radius: 8px;
+  font-weight: bolder;
+  background-color: crimson;
+  border: none;
+  // letter-spacing: 10px;
+}
+
+.button:hover {
+  background-color: rgb(168, 18, 48);
+  color: white;
+}
