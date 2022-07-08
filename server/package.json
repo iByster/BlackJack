@@ -6,6 +6,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "express": "^4.18.1",
+    "shuffle": "^0.2.5",
     "socket.io": "^4.5.1"
   },
   "devDependencies": {
