@@ -12,3 +12,20 @@
   background-color: rgb(168, 18, 48);
   color: white;
 }
+
+
+.small-button {
+  padding: 10px 0;
+  font-size: 20px;
+  border-radius: 8px;
+  font-weight: bolder;
+  background-color: crimson;
+  border: none;
+  width: 200px;
+  // letter-spacing: 10px;
+}
+
+.small-button:hover {
+  background-color: rgb(168, 18, 48);
+  color: white;
+}

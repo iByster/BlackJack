@@ -50,6 +50,7 @@ export function dealersShuffle(Deck: ICard[]) {
 
 export const canculatePointByCards = (cards: ICard[]) => {
   let totalValue = 0;
+  const aces: ICard[] = [];
   for (let i = 0; i < cards.length; ++i) {
     const { value } = cards[i];
     let intValue = 0;
@@ -57,16 +58,24 @@ export const canculatePointByCards = (cards: ICard[]) => {
     if (value === 'jack' || value === 'king' || value === 'queen') {
       intValue = 10;
     } else if (value === 'ace') {
-      if (11 + totalValue > 21) {
-        intValue = 1;
-      } else {
-        intValue = 11;
-      }
+      aces.push(cards[i]);
     } else {
       intValue = parseInt(value);
     }
 
     totalValue += intValue;
+  }
+
+  if (aces.length > 0) {
+    aces.forEach((_) => {
+      let intValue = 0;
+      if (11 + totalValue > 21) {
+        intValue = 1;
+      } else {
+        intValue = 11;
+      }
+      totalValue += intValue;
+    });
   }
 
   return totalValue;

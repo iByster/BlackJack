@@ -30,6 +30,7 @@ export interface ICard {
 }
 
 export interface IPlayerStats {
+  id: number;
   name: string;
   cards: ICard[];
   totalPoints: number;
@@ -51,7 +52,7 @@ export interface IPlayerActionPayload {
 export interface ITableStats {
   playersStats: IPlayerStats[];
   dealerStats: IDealerStats;
-  bet: number;
+  logs: string;
 }
 
 export interface IRoom {

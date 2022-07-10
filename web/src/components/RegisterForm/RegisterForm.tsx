@@ -46,7 +46,7 @@ export const RegisterForm: React.FC<RegisterFormProps> = ({}) => {
           value={name}
         />
       </p>
-      <Button onClick={handleSubmit}>PLAY</Button>
+      <Button variant='big' onClick={handleSubmit}>PLAY</Button>
     </form>
   );
 };

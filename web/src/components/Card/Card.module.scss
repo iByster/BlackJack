@@ -1,0 +1,28 @@
+.card {
+  // height: 70px;
+  // height: 30px;
+  height: 5em;
+
+  border-radius: 6px;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+}
+
+
+.cardWrapper {
+  overflow: hidden;
+}
+
+.cardWrapper:last-child, .cardWrapper:hover {
+  overflow: visible;
+}
+.cardImage {
+  height: 120px;
+  width: 100px;
+}
+
+.cardImage:hover {
+  height: 150px;
+  width: 100px;
+}

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react';
+import { logoutReq } from '../controllers/UserController';
 
 export interface IUserProfile {
   name: string;
@@ -10,7 +11,8 @@ export interface IUserProfile {
 interface IAuthContext {
   userProfile: Partial<IUserProfile>;
   login(userProfile: IUserProfile | {}): void;
-  logout(): void;
+  logout(userId: number): void;
+  setGameActive(): void;
 }
 
 export const AuthContext = createContext<Partial<IAuthContext>>({});
@@ -35,7 +37,16 @@ export const AuthContextProvider: React.FC<AuthContextProviderInterface> = ({
     localStorage.setItem('user', JSON.stringify(userProfile));
   }
 
-  function logout() {
+  function setGameActive() {
+    if (userProfile) {
+      setUserProfile({ ...userProfile, gameActive: true });
+    } else {
+      alert('No profile!')
+    }
+  }
+
+  async function logout(userId: number) {
+    const a = await logoutReq(userId);
     setUserProfile(undefined);
     localStorage.removeItem('user');
   }

@@ -1,23 +1,43 @@
+import { useEffect } from 'react';
+import { Route, Routes, useNavigate } from 'react-router-dom';
 import './App.css';
-import { WelcomePage } from './pages/WelcomePage/WelcomePage';
-import { Routes, Route } from 'react-router-dom';
 import { Lobby } from './pages/Lobby/Lobby';
 import { NotFound } from './pages/NotFound/NotFound';
 import { Table } from './pages/Table/Table';
-import { userIsAuth } from './utils/userIsAuth';
-import { useEffect } from 'react';
-import { useAuthContext } from './context/AuthProvider';
+import { WelcomePage } from './pages/WelcomePage/WelcomePage';
+import { me } from './controllers/UserController';
+import { IUserProfile, useAuthContext } from './context/AuthProvider';
+import { useSocketContext } from './context/SocketProvider';
 
 function App() {
-  const { login } = useAuthContext();
-  useEffect(() => {
-    const fn = async () => {
-      const me = await userIsAuth();
-      login?.(me);
-    }
+  const { login, userProfile } = useAuthContext();
+  const navigate = useNavigate();
+  const { socket } = useSocketContext();
 
-    fn();
-  }, []);
+  useEffect(() => {
+    const initUserSession = async () => {
+      const userProfileSession = localStorage.getItem('user');
+      if (userProfileSession) {
+        const userProfileJson = JSON.parse(userProfileSession);
+
+        const { results: user, errors } = await me(userProfileJson.id);
+        login?.(user);
+        if (user.gameActive) {
+          navigate(`/table/${user.roomId}`, { replace: true });
+          socket?.emit('rejoinRoom', {
+            userId: userProfileJson.id,
+            roomId: userProfileJson.roomId,
+          });
+        }
+      } else {
+        console.log('NO SESSION');
+      }
+    };
+
+    if (!userProfile) {
+      initUserSession();
+    }
+  }, [userProfile]);
 
   return (
     <Routes>

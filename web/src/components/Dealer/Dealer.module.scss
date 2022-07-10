@@ -1,0 +1,40 @@
+.dealer {
+    // background-color: red;
+    // width: 40%;
+    margin-bottom: 15vh;
+}
+
+.dealer-container {
+    display: flex;
+    justify-content: space-around;
+    width: 60%;
+}
+
+.dealer-header {
+    margin-bottom: 10px;
+}
+
+.dealer-img {
+    width: 100px;
+    height: 100px;
+}
+
+.dealerCards {
+    margin-top: 50px;
+    display: flex;
+    height: 150px;
+    flex-direction: row;
+} 
+
+.bet {
+    margin-top: 50px;
+    font-size: 50px;
+    font-weight: bolder;
+    width: 20%;
+    margin-right: 360px;
+}
+
+.dealer-slot {
+    display: flex;
+    flex-direction: column;
+}

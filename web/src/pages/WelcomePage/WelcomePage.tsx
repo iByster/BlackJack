@@ -7,7 +7,6 @@ import style from './WelcomePage.module.scss';
 interface WelcomePageProps {}
 
 export const WelcomePage: React.FC<WelcomePageProps> = ({}) => {
-  
   return (
     <FlexColumnContainer>
       <h2 className={style['welcome-text']}>Welcome To</h2>

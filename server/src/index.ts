@@ -1,45 +1,24 @@
-import http from 'http';
-import express from 'express';
-import { Server } from 'socket.io';
 import cors from 'cors';
-import {
-  canculatePointByCards,
-  dealersShuffle,
-  riffleShuffle,
-  spliceShuffle,
-  stackShuffle,
-} from './utils/shuffle';
-import { delay } from './utils/delay';
-import {
-  ICard,
-  IPlayerActionPayload,
-  IRegisterPayload,
-  IRoom,
-  ITableStats,
-  IUser,
-} from './types';
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import { CHIPS_VALUE, ROOM_MAX_PLAYERS } from './consts';
 import RoomService from './service/RoomService';
 import UserService from './service/UserService';
+import {
+  IPlayerActionPayload,
+  IPlayerStats,
+  IRegisterPayload,
+  IRoom,
+  IUser,
+} from './types';
+import { delay } from './utils/delay';
 import { generateDecks } from './utils/generateDecks';
-import { ROOM_MAX_PLAYERS } from './consts';
+import { canculatePointByCards, dealersShuffle } from './utils/shuffle';
+import 'dotenv/config';
 
 // TODO .env
-const PORT = 3457;
-
-const app = express();
-app.use(cors());
-const server = http.createServer(app);
-
-const io = new Server(server, {
-  cors: {
-    origin: 'http://localhost:3000',
-    methods: ['GET', 'POST', 'DELETE'],
-  },
-});
-
-server.listen(PORT, () => {
-  console.log(`SERVER STARTED ON PORT: ${PORT}`);
-});
+const PORT = process.env.PORT;
 
 let usersConnected: IUser[] = [];
 let clientId = 0;
@@ -48,31 +27,228 @@ let rooms: IRoom[] = [];
 const roomService = new RoomService();
 const userService = new UserService();
 
-io.on('connection', (socket) => {
-  console.log('a user connected');
+const app = express();
+app.use(cors());
+const server = http.createServer(app);
 
+const io = new Server(server, {
+  cors: {
+    origin: 'http://localhost:3000',
+    methods: ['GET', 'POST'],
+  },
+});
+
+server.listen(PORT, () => {
+  console.log(`SERVER STARTED ON PORT: ${PORT}`);
+});
+
+const logout = (id: number) => {
+  const indexOfUser = usersConnected.findIndex((user) => user.id === id);
+  const indexOfRoom = rooms.findIndex(
+    (room) => room.id === usersConnected[indexOfUser].roomId
+  );
+  const indexOfUserInRoom = rooms[indexOfRoom].players.findIndex(
+    (player) => player.id === id
+  );
+  const indexOfUserInPlayerStats = rooms[
+    indexOfRoom
+  ].tableStats.playersStats!.findIndex((player) => player.id === id);
+  usersConnected.splice(indexOfUser, 1);
+  rooms[indexOfRoom].players.splice(indexOfUserInRoom, 1);
+  rooms[indexOfRoom].tableStats.playersStats!.splice(
+    indexOfUserInPlayerStats,
+    1
+  );
+};
+
+const checkingForWinners = async (room: IRoom) => {
+  room.tableStats.logs = 'Handling winners or losers...';
+  io.to(roomId.toString()).emit('tableStats', room.tableStats);
+
+  await delay(1000);
+
+  room.tableStats.playersStats!.forEach((ps) => {
+    if (ps.totalPoints > 21) {
+      return;
+    }
+    if (ps.totalPoints === 21) {
+      ps.chips += CHIPS_VALUE * 2 + 50;
+      return;
+    }
+    if (
+      (ps.totalPoints > room.tableStats.dealerStats!.totalPoints &&
+        !(ps.totalPoints > 21)) ||
+      room.tableStats.dealerStats!.totalPoints > 21
+    ) {
+      ps.chips += CHIPS_VALUE * 2;
+      return;
+    }
+    if (ps.totalPoints === room.tableStats.dealerStats!.totalPoints) {
+      ps.chips += CHIPS_VALUE;
+      return;
+    }
+  });
+
+  io.to(roomId.toString()).emit('tableStats', room.tableStats);
+};
+
+const dealersTurn = async (room: IRoom) => {
+  room.tableStats.logs = "It's Dealer's turn...";
+  io.to(roomId.toString()).emit('tableStats', room.tableStats);
+
+  await delay(2000);
+
+  room.tableStats.dealerStats?.cards.push(room.deck.shift()!);
+  room.tableStats.dealerStats!.totalPoints = canculatePointByCards(
+    room.tableStats.dealerStats?.cards!
+  );
+  io.to(roomId.toString()).emit('tableStats', room.tableStats);
+
+  await delay(1500);
+
+  if (room.tableStats.dealerStats!.totalPoints < 16) {
+    room.tableStats.dealerStats?.cards.push(room.deck.shift()!);
+
+    room.tableStats.dealerStats!.totalPoints = canculatePointByCards(
+      room.tableStats.dealerStats?.cards!
+    );
+  }
+
+  await delay(1500);
+
+  io.to(roomId.toString()).emit('tableStats', room.tableStats);
+};
+
+const newRound = async (
+  roomIndex: number,
+  playersStatsParam?: IPlayerStats[]
+) => {
+  rooms[roomIndex].deck = dealersShuffle(generateDecks());
+
+  if (playersStatsParam) {
+    const usersOutIds: number[] = [];
+
+    playersStatsParam.forEach((ps, i) => {
+      // if (ps.chi)
+      if (i == 0) {
+        ps.turn = true;
+      } else {
+        ps.turn = false;
+      }
+
+      if (ps.chips <= 0) {
+        usersOutIds.push(ps.id);
+      }
+
+      ps.cards = [];
+    });
+
+    userService.setUserConnectGameStatusDisconnected(
+      usersConnected,
+      usersOutIds
+    );
+    playersStatsParam = playersStatsParam.filter((ps) => ps.chips > 0);
+
+    playersStatsParam.forEach((ps, i) => {
+      if (i == 0) {
+        ps.turn = true;
+      } else {
+        ps.turn = false;
+      }
+    });
+  }
+
+  rooms[roomIndex].tableStats = {
+    dealerStats: {
+      cards: [],
+      bet: 0,
+      totalPoints: 0,
+    },
+    playersStats:
+      playersStatsParam ||
+      rooms[roomIndex].players.map((p, i) => ({
+        id: p.id!,
+        name: p.name!,
+        cards: [],
+        chips: CHIPS_VALUE * 2,
+        turn: i === 0 ? true : false,
+        totalPoints: 0,
+      })),
+    logs: playersStatsParam
+      ? 'Starting the next round...'
+      : 'Starting the round...',
+  };
+
+  io.to(roomId.toString()).emit('tableStats', rooms[roomIndex].tableStats);
+
+  await delay(3000);
+
+  // ! PLACE BET
+  rooms[roomIndex].tableStats.dealerStats!.bet =
+    rooms[roomIndex].tableStats.playersStats!.length * CHIPS_VALUE;
+  rooms[roomIndex].tableStats.playersStats?.forEach((ps) => {
+    ps.chips = ps.chips - CHIPS_VALUE;
+  });
+
+  rooms[roomIndex].tableStats.logs = 'Placing bets...';
+  io.to(roomId.toString()).emit('tableStats', rooms[roomIndex].tableStats);
+
+  await delay(1500);
+
+  rooms[roomIndex].tableStats.logs = 'Dealing cards...';
+
+  for (let i = 0; i < 2; ++i) {
+    for (let j = 0; j < rooms[roomIndex].tableStats.playersStats!.length; ++j) {
+      rooms[roomIndex].tableStats.playersStats![j].cards.push(
+        rooms[roomIndex].deck.shift()!
+      );
+
+      rooms[roomIndex].tableStats.playersStats![j].totalPoints =
+        canculatePointByCards(
+          rooms[roomIndex].tableStats.playersStats![j].cards
+        );
+      await delay(1000);
+      io.to(roomId.toString()).emit('tableStats', rooms[roomIndex].tableStats);
+    }
+
+    if (i == 0) {
+      rooms[roomIndex].tableStats.dealerStats!.cards.push(
+        rooms[roomIndex].deck.shift()!
+      );
+      rooms[roomIndex].tableStats.dealerStats!.totalPoints =
+        canculatePointByCards(rooms[roomIndex].tableStats.dealerStats!.cards);
+
+      await delay(1000);
+      io.to(roomId.toString()).emit('tableStats', rooms[roomIndex].tableStats);
+    }
+  }
+
+  rooms[roomIndex].tableStats.logs = '';
+  io.to(roomId.toString()).emit('tableStats', rooms[roomIndex].tableStats);
+};
+
+io.on('connection', (socket) => {
   socket.on('rejoinRoom', (data: IPlayerActionPayload) => {
-    const { roomId, userId } = data;
+    const { userId } = data;
 
     const user = userService.findUserById(userId, usersConnected);
 
     if (user?.roomId) {
-      console.log('REJOIIIIIIIIIIIIIN');
       socket.join(user.roomId.toString());
     } else {
-      console.log('USER NOT CONNECTED');
     }
   });
 
   socket.on('register', async (data: IRegisterPayload) => {
+    // !! SAVING USER
     const user: IUser = {};
     user.gameActive = false;
     user.name = data.name;
     user.id = clientId++;
-
     roomId = Math.round(clientId / 2);
-    socket.join(roomId.toString());
     user.roomId = roomId;
+
+    socket.join(roomId.toString());
     console.log(`New client no.: ${clientId}, room no.: ${roomId}`);
 
     socket.emit('userSaved', user);
@@ -82,10 +258,8 @@ io.on('connection', (socket) => {
 
     if (roomIndex >= 0) {
       rooms[roomIndex].players.push(user);
+      // !! GAME FOUND
       if (rooms[roomIndex].players.length === ROOM_MAX_PLAYERS) {
-        // const tableStatas: Partial<ITableStats> = {};
-        // rooms[roomIndex].tableStats = tableStatas;
-        console.log('aici');
         rooms[roomIndex] = roomService.setPlayersGameStatusActive(
           rooms[roomIndex]
         );
@@ -95,115 +269,12 @@ io.on('connection', (socket) => {
           roomPlayersIds
         );
         rooms[roomIndex].gameActive = true;
-        rooms[roomIndex].deck = dealersShuffle(generateDecks());
-        rooms[roomIndex].tableStats = {
-          dealerStats: {
-            cards: [],
-            bet: 0,
-            totalPoints: 0,
-          },
-          playersStats: [
-            // TODO FOR
-            {
-              name: rooms[roomIndex].players[0].name!,
-              cards: [],
-              chips: 500,
-              turn: true,
-              totalPoints: 0,
-            },
-            {
-              name: rooms[roomIndex].players[1].name!,
-              cards: [],
-              chips: 500,
-              turn: false,
-              totalPoints: 0,
-            },
-          ],
-        };
 
-        for (let i = 0; i < ROOM_MAX_PLAYERS; ++i) {
-          for (let j = 0; j < ROOM_MAX_PLAYERS; ++j) {
-            rooms[roomIndex].tableStats.playersStats![j].cards.push(
-              rooms[roomIndex].deck.shift()!
-            );
+        await delay(2000);
 
-            rooms[roomIndex].tableStats.playersStats![j].totalPoints =
-              canculatePointByCards(
-                rooms[roomIndex].tableStats.playersStats![j].cards
-              );
-          }
+        io.to(roomId.toString()).emit('gameStarted', {});
 
-          // ! TEST DELAY
-          await delay(5000);
-          io.to(roomId.toString()).emit(
-            'tableStats',
-            rooms[roomIndex].tableStats
-          );
-
-          if (i == 0) {
-            rooms[roomIndex].tableStats.dealerStats!.cards.push(
-              rooms[roomIndex].deck.shift()!
-            );
-            rooms[roomIndex].tableStats.dealerStats!.totalPoints =
-              canculatePointByCards(
-                rooms[roomIndex].tableStats.dealerStats!.cards
-              );
-
-            // ! TEST DELAY
-            await delay(5000);
-            io.to(roomId.toString()).emit(
-              'tableStats',
-              rooms[roomIndex].tableStats
-            );
-          }
-        }
-
-        // playBet
-        let playerFinished = 0;
-        let foundNextPlayer = false;
-        for (
-          let i = 0;
-          i < rooms[roomIndex].tableStats.playersStats!.length;
-          ++i
-        ) {
-          if (rooms[roomIndex].tableStats.playersStats![i].totalPoints === 21) {
-            rooms[roomIndex].tableStats.playersStats![i].turn = false;
-            playerFinished++;
-
-            if (!foundNextPlayer) {
-              rooms[roomIndex].tableStats.playersStats![i].turn = true;
-            }
-          }
-        }
-
-        if (playerFinished === ROOM_MAX_PLAYERS) {
-          rooms[roomIndex].tableStats.dealerStats?.cards.push(
-            rooms[roomIndex].deck.shift()!
-          );
-
-          rooms[roomIndex].tableStats.dealerStats!.totalPoints =
-            canculatePointByCards(
-              rooms[roomIndex].tableStats.dealerStats?.cards!
-            );
-
-          if (rooms[roomIndex].tableStats.dealerStats!.totalPoints < 16) {
-            rooms[roomIndex].tableStats.dealerStats?.cards.push(
-              rooms[roomIndex].deck.shift()!
-            );
-
-            rooms[roomIndex].tableStats.dealerStats!.totalPoints =
-              canculatePointByCards(
-                rooms[roomIndex].tableStats.dealerStats?.cards!
-              );
-          }
-        }
-
-        // check for blackjack
-
-        io.to(roomId.toString()).emit(
-          'gameStarted',
-          rooms[roomIndex].tableStats
-        );
+        await newRound(roomIndex);
       }
     } else {
       rooms.push({
@@ -215,42 +286,32 @@ io.on('connection', (socket) => {
         roundNumber: 0,
       });
     }
-
-    console.log('ROOMS: ', rooms);
-    console.log('CONNECTED USER: ', usersConnected);
   });
 
   socket.on('getTableStatus', (roomId) => {
     const room = roomService.findRoomById(roomId, rooms);
 
     if (room && room.gameActive) {
-      console.log('HERREEEEE');
-      console.log(room.tableStats);
-      console.log(roomId);
       io.to(roomId.toString()).emit('tableStats', room.tableStats);
     }
   });
 
-  socket.on('hit', (data: IPlayerActionPayload) => {
+  socket.on('hit', async (data: IPlayerActionPayload) => {
     const { roomId, userId } = data;
-    console.log('HIT');
 
     const room = roomService.findRoomById(roomId, rooms);
 
+    // ! CHECK FOR ROOM
     if (room && room.gameActive) {
       let playerStatsIndex = roomService.findUserStatsIndexById(userId, room);
-      console.log('Room active');
-      console.log(playerStatsIndex);
-      console.log(
-        'TURN:',
-        room!.tableStats!.playersStats![playerStatsIndex!].turn
-      );
+
+      // !! CHECK IF Players turn
       if (room.tableStats.playersStats) {
         if (
           playerStatsIndex !== undefined &&
           room.tableStats.playersStats[playerStatsIndex].turn
         ) {
-          console.log('PLAYER HIT');
+          // ! HIT
           room.tableStats.playersStats[playerStatsIndex].cards.push(
             room.deck.shift()!
           );
@@ -259,36 +320,38 @@ io.on('connection', (socket) => {
               room.tableStats.playersStats![playerStatsIndex].cards
             );
 
+          io.to(roomId.toString()).emit('tableStats', room.tableStats);
+
+          // ! BUST OR BLACKJACK
           if (
             room.tableStats.playersStats![playerStatsIndex].totalPoints >= 21
           ) {
             room.tableStats.playersStats[playerStatsIndex].turn = false;
-            // get next player
+            io.to(roomId.toString()).emit('tableStats', room.tableStats);
+
             playerStatsIndex++;
-            if (room.tableStats.playersStats.length === playerStatsIndex) {
-              // playerStatsIndex = 0;
-              room.tableStats.dealerStats?.cards.push(room.deck.shift()!);
 
-              room.tableStats.dealerStats!.totalPoints = canculatePointByCards(
-                room.tableStats.dealerStats?.cards!
+            // !! DEALER'S TURN
+            if (room.tableStats.playersStats.length <= playerStatsIndex) {
+              await dealersTurn(room);
+
+              await delay(3500);
+
+              // !! CHECK FOR WINNEr
+              await checkingForWinners(room);
+
+              await delay(8000);
+
+              await newRound(
+                roomService.findRoomIndexById(roomId, rooms),
+                room.tableStats.playersStats
               );
-
-              if (room.tableStats.dealerStats!.totalPoints < 16) {
-                room.tableStats.dealerStats?.cards.push(room.deck.shift()!);
-
-                room.tableStats.dealerStats!.totalPoints =
-                  canculatePointByCards(room.tableStats.dealerStats?.cards!);
-              }
+              return;
             } else {
-              while (
-                room.tableStats.playersStats[playerStatsIndex].totalPoints >= 21
-              ) {
-                playerStatsIndex++;
-              }
+              // !! FIND NEXT PLAYER'S TURN
               room.tableStats.playersStats[playerStatsIndex].turn = true;
             }
           }
-          console.log(room);
           io.to(roomId.toString()).emit('tableStats', room.tableStats);
         } else {
           console.log('ITS NOT YOUR TURN!!!');
@@ -297,7 +360,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('stand', (data: IPlayerActionPayload) => {
+  socket.on('stand', async (data: IPlayerActionPayload) => {
     const { roomId, userId } = data;
 
     const room = roomService.findRoomById(roomId, rooms);
@@ -310,33 +373,28 @@ io.on('connection', (socket) => {
           room.tableStats.playersStats[playerStatsIndex].turn
         ) {
           room.tableStats.playersStats[playerStatsIndex].turn = false;
+          io.to(roomId.toString()).emit('tableStats', room.tableStats);
           // get next player
           playerStatsIndex++;
-          if (room.tableStats.playersStats.length === playerStatsIndex) {
-            playerStatsIndex = 0;
-            room.tableStats.dealerStats?.cards.push(room.deck.shift()!);
 
-            room.tableStats.dealerStats!.totalPoints = canculatePointByCards(
-              room.tableStats.dealerStats?.cards!
+          if (room.tableStats.playersStats.length <= playerStatsIndex) {
+            await dealersTurn(room);
+
+            await delay(3500);
+
+            // !! CHECK FOR WINNEr
+            await checkingForWinners(room);
+
+            await delay(8000);
+
+            await newRound(
+              roomService.findRoomIndexById(roomId, rooms),
+              room.tableStats.playersStats
             );
-
-            if (room.tableStats.dealerStats!.totalPoints < 16) {
-              room.tableStats.dealerStats?.cards.push(room.deck.shift()!);
-
-              room.tableStats.dealerStats!.totalPoints = canculatePointByCards(
-                room.tableStats.dealerStats?.cards!
-              );
-            }
+            return;
           } else {
-            while (
-              room.tableStats.playersStats[playerStatsIndex].totalPoints >= 21
-            ) {
-              playerStatsIndex++;
-            }
-
             room.tableStats.playersStats[playerStatsIndex].turn = true;
           }
-          console.log(playerStatsIndex);
           io.to(roomId.toString()).emit('tableStats', room.tableStats);
         } else {
           console.log('ITS NOT YOUR TURN!!!');
@@ -350,34 +408,28 @@ io.on('disconnect', () => {
   console.log('Bye');
 });
 
-app.get('/me/:id', (req, res, next) => {
+app.get('/me/:id', (req, res) => {
   const { id } = req.params;
   const user = usersConnected.find((user) => user.id === parseInt(id));
-  console.log(usersConnected);
   res.send(user);
 });
 
-app.get('/table/:id', (req, res, next) => {
+app.get('/table/:id', (req, res) => {
   const { id } = req.params;
   const tableStats = roomService.findRoomById(parseInt(id), rooms)?.tableStats;
   res.send(tableStats);
 });
 
-app.delete('/logout/:id', (req, res, next) => {
+app.delete('/logout/:id', (req, res) => {
   const { id } = req.params;
-  // TODO Refactor, no need for userConnected array
-  const indexOfUser = usersConnected.findIndex(
-    (user) => user.id === parseInt(id)
-  );
-  const indexOfRoom = rooms.findIndex(
-    (room) => room.id === usersConnected[indexOfUser].roomId
-  );
-  const indexOfUserInRoom = rooms[indexOfRoom].players.findIndex(
-    (player) => player.id === parseInt(id)
-  );
-  usersConnected.splice(indexOfUser, 1);
-  rooms[indexOfRoom].players.splice(indexOfUserInRoom, 1);
-  clientId--;
+  const roomId = userService.findUserById(parseInt(id), usersConnected)?.roomId;
+  if (roomId) {
+    const roomGameActive = roomService.findRoomById(roomId, rooms)?.gameActive;
+    if (!roomGameActive) {
+      clientId--;
+    }
+  }
+  logout(parseInt(id));
   console.log('ROOMS: ', rooms);
   console.log('CONNECTED USER: ', usersConnected);
   res.send({ id });
