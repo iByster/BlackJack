@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { BASE_URL } from '../consts';
 
 interface ISocketContext {
   socket: Socket | undefined;
@@ -19,7 +20,7 @@ interface SocketProviderProps {
 }
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
-  const socket = io('http://localhost:3457');
+  const socket = io(BASE_URL!);
   const [isConnected, setIsConnected] = useState(socket.connected);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { IRoom, IUser } from "../types";
+import { IUser } from "../types";
 
 class UserService {
     setUserConnectGameStatusActive(userConnected: IUser[], userIds: number[]) {

@@ -1,8 +1,7 @@
 {
-  "name": "server",
+  "name": "blackjack-server",
   "version": "1.0.0",
   "main": "index.js",
-  "license": "MIT",
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.0.1",
@@ -22,6 +21,6 @@
     "dev2": "nodemon --exec ts-node src/index.ts",
     "start": "node dist/index.js",
     "start2": "ts-node src/index.ts",
-    "postinstall": "tsc"
+    "build": "tsc"
   }
 }
